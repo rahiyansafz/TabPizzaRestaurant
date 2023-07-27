@@ -1,0 +1,169 @@
+﻿@page "/"
+
+@using Repository.Services
+@using Models
+@using DataBaseAccess.Models
+
+@inject NavigationManager NavigationManager
+@inject Repository.Services.PizzaService Storage
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+
+<center>
+    <h1>Witamy w Galak Pizza!</h1>
+</center>
+<hr class="my-4">
+
+@if (sortedMenu is null)
+{
+    <p><em>Loading...</em></p> }
+else
+{
+    <div class="box-shadow">
+    <center>
+        <div class="text-center">
+            <h3>Menu</h3>
+        </div>
+
+        <div class="container ">
+            <div class="row mb-3 justify-content-center">
+                <div class="custom-class text-center text-white col-md-5 themed-grid-col-naglowek">Nazwa pizzy</div>
+                <div class="custom-class text-center text-white col-8 col-md-2 themed-grid-col-naglowek offset-md-1">Cena za pizzę [PLN]</div>
+                <div class="custom-class text-center text-white col-6 col-md-2 themed-grid-col-naglowek offset-md-1">Punkty</div>
+                <AuthorizeView Roles="Client">
+                    <Authorized>
+                        <div class="custom-class text-center text-white col-6 col-md-2 themed-grid-col-naglowek offset-md-1">Wybór zamówienia</div>
+                    </Authorized>
+                </AuthorizeView>
+
+             </div>
+            
+            @foreach (var pizza in sortedMenu)
+            {
+                if (pizza.IsAvailable)
+                {
+                    int local =sortedMenu.IndexOf(pizza);
+                    <div class="row mb-3 justify-content-center">
+                    <div class="custom-class text-center col-md-5 themed-grid-col">@pizza.Type</div>
+                    <div class="custom-class text-center col-8 col-md-2 themed-grid-col offset-md-1">@pizza.Price</div>
+
+                    @if (pizza.Points == null || pizza.Points == 0)
+                    {
+                        <div class="custom-class text-center col-6 col-md-2 themed-grid-col offset-md-1">brak</div> }
+                    else
+                    {
+                        <div class="custom-class text-center col-6 col-md-2 themed-grid-col offset-md-1">@pizza.Points</div>}
+                            <AuthorizeView Roles="Client">
+                                <Authorized>
+                                    <input type="number" id="pizzaAmount@(pizza.IdPizza)" min="0" step="1" class="custom-class text-center col-md-1 offset-md-1 " @bind="@order[local]">
+                                </Authorized>
+                            </AuthorizeView>
+                        </div>
+                }
+            }
+        </div>
+        <AuthorizeView Roles="Client">
+            <Authorized>
+                <button @onclick="@realization" class="btn btn-primary mb-3">Zrealizuj zamówienie</button>
+            </Authorized>
+        </AuthorizeView>
+    </center>
+</div>
+}
+
+@if(diplayText)
+{
+    <center> 
+        <hr>
+        <h4 style="color:rgb(255,51,51)">Nie wybrałeś dania.</h4> 
+    </center>
+}
+
+<hr class="my-4" />
+<center>
+    <AuthorizeView Roles="Client">
+        <NotAuthorized>
+            <div class="custom-class text-center col-md-6 themed-alert">
+                <span class="material-icons">phone</span>
+                <h6>(zamówienie online możliwe dopiero po założeniu konta lub zalogowaniu się)</h6>
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+</center>
+
+@code
+{
+    private List<Pizza> menu;
+    private List<Pizza> sortedMenu;
+    private List<Order> o;
+    [Parameter]
+    public List<int> order { get; set; }=new List<int>(); // TODO trzeba dodać do session storage
+    private List<bool> isChecked;
+    private int test;
+    private bool diplayText = false;
+
+    protected override Task OnInitializedAsync()
+    {
+        isChecked = new List<bool>();   // TODO to jest w sumie potrzebne? 
+        sortedMenu = new List<Pizza>();
+        return base.OnInitializedAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+
+        menu = await Storage.GetMenu();
+        sortedMenu = menu.OrderBy(o => o.Type).ToList();
+
+        for (int i = 0; i < sortedMenu.Count; i++)
+            order.Add(0);
+    }
+
+    private async void addPizzaToSessionStorage()
+    {
+        string whichPizzaIdWasSelected = "";
+        for(int i = 0; i < order.Count; i++)
+        {
+            //string tmp = "order_how_many_selected_" + sortedMenu[i].IdPizza.ToString();
+            //await sessionStorage.SetItemAsStringAsync(tmp, order[i].ToString());
+            if(order[i] > 0)
+            {
+                whichPizzaIdWasSelected += "*";
+                whichPizzaIdWasSelected += sortedMenu[i].IdPizza.ToString();
+                whichPizzaIdWasSelected += "_" + order[i].ToString();
+                whichPizzaIdWasSelected += "*";
+            }
+        }
+        await sessionStorage.SetItemAsStringAsync("order_info", whichPizzaIdWasSelected);
+    }
+
+    private async Task<bool> realization()
+    {
+        if (isThereAnyPizzaSelected())
+        {
+            try
+            {
+                addPizzaToSessionStorage();
+                NavigationManager.NavigateTo("/client/order/summary");
+                return await Task.FromResult(true);
+            }
+            catch (Exception e)
+            {
+                return await Task.FromResult(false);
+            }
+        }
+        diplayText = true;
+        this.StateHasChanged();
+        return await Task.FromResult(false);
+    }
+
+    private bool isThereAnyPizzaSelected()
+    {
+        foreach(var item in order)
+        {
+            if (item > 0)
+                return true;
+        }
+        return false;
+    }
+}

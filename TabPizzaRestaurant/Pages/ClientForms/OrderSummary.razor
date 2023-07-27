@@ -1,0 +1,218 @@
+﻿@page "/client/order/summary"
+<center>
+<h3>Podsumowanie zamówienia</h3>
+</center>
+
+@using System
+@using DataBaseAccess.Models
+@using TabPizzaRestaurant.Models
+@using TabPizzaRestaurant.Data
+
+@inject Blazored.SessionStorage.ISessionStorageService sessionStorage
+@inject Repository.Services.ClientService clientService
+@inject Repository.Services.PizzaService pizzaService
+@inject Repository.Services.OrderManagmentService orderManagmentService
+@inject Repository.Services.RestaurantService restaurantService
+@inject Repository.Services.AccountService accountService
+@inject NavigationManager NavigationManager
+
+<style>
+    .flex-container{
+        display:flex;
+        justify-content:center;
+        flex-direction:row;
+        align-items:center;
+    }
+    .flex-item1{
+        margin-right:10%;
+        width:40%;
+    }
+
+    
+</style>
+
+@if(orderInfo is null || selectedDishes is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="box-shadow">
+    <center> 
+        <hr>
+        <div>
+            <!-- Dane o wybranych pizzach -->
+            @*<div style="width: 50%; height: 100px; float: left;">*@
+                <div class="flex-container">
+                <div class="flex-item1">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Pizza</th>
+                            <th>Ilość</th>
+                            <th>Cena</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach(var dish in selectedDishes)
+                    { 
+                        <tr>
+                            <th>@dish.Item1.Type</th>
+                            <th>@dish.Item2</th>
+                            <th>@calculatePrice(@dish.Item1.Price, @dish.Item2)</th>
+                        </tr>        
+                    }
+                    </tbody>
+                </table>
+                <h4>Kwota łącznie: @calculateTheSum() @currencyType</h4>
+           </div>
+            <!-- Dane Kliencie-->
+            @*<div style="margin-left: 50%; height: 100px;">*@
+                <div class ="flex-item2">
+                <h3>Dane do zamówienia</h3>
+                <EditForm Model="@orderData" OnValidSubmit="@makeOrder">
+                    <div>
+                        <div class="row">
+                            <div class="flex-md-column pr-3 mx-auto"><p>Imię:</p>      <InputText id="firstName" @bind-Value="orderData.FirstName"/></div>
+                            <div class="flex-md-column mx-auto"><p>Nazwisko:</p>   <InputText id="secondName" @bind-Value="orderData.LastName"/></div>
+                        </div>
+                        <br />
+                        
+                        <div class="row">
+                            <div class="flex-md-column mx-auto"><p>Telefon:</p>     <InputText id="Phone" @bind-Value="orderData.PhoneNumber"/></div>
+                        </div>
+                        
+                        <br />
+                        <div class="row">
+                            <div class="flex-md-column pr-3 mx-auto"><p>Adres:</p>  <InputText id="Address" @bind-Value="orderData.Address"/></div>
+                            <div class="flex-md-column mx-auto"><p>Miasto:</p>
+                                <InputSelect id="restaurant" @bind-Value="orderData.City">
+                                    @foreach (var city in Cities)
+                                    {
+                                        <option value="@city">@city</option>
+                                    }
+                                </InputSelect></div>
+                        </div>
+                        <div class="row">
+                            <div class="flex-md-column mt-3 mx-auto"><p>Adres naszej restauracji:</p>  
+                                <InputSelect id="restaurant" @bind-Value="orderData.RestaurantId">
+                                    @foreach (var restaurant in restaurants)
+                                    {
+                                        <option value="@restaurant.IdRestaurant">@restaurant.Address</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                        </div>
+                    </div>
+                        <DataAnnotationsValidator/>
+                        <ValidationSummary/>  
+                    <br />
+                    <button type="submit" class="btn btn-primary mb-2">Złóż zamówienie</button>
+                </EditForm>
+                </div>
+            </div>
+        </div>
+    </center>
+    </div>
+}
+
+@if(wasException)
+{
+    <center> 
+        <hr>
+        <p style="color:rgb(255,51,51)">@error</p>
+    </center>   
+}
+
+@code 
+{
+    private string currencyType;
+    private string orderInfo;
+    private string error;
+    private bool wasException;
+    private OrderFront orderData;
+    List<(Pizza, int)> selectedDishes;
+    List<Restaurant> restaurants;
+    List<string> Cities;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        wasException = false;
+        currencyType = "ZŁ";
+        try
+        {
+            Cities = new List<string>();
+            Cities.Add("Gliwice");
+            Cities.Add("Katowice");
+            Cities.Add("Zabrze");
+
+            await initOrderData();
+            orderInfo = new string("");
+            orderInfo = await sessionStorage.GetItemAsStringAsync("order_info");
+            selectedDishes = await pizzaService.SelectItemsFromTheSummary(orderInfo);
+            restaurants = await restaurantService.GetRestaurants();
+        }
+        catch(Exception e)
+        {
+            error = e.Message;
+            wasException = true;
+        }
+    }
+
+    private int calculatePrice(int priceFromSinglePizza, int ammount) => priceFromSinglePizza * ammount;
+
+    private int calculateTheSum()
+    {
+        int sum = 0;
+        foreach(var dish in selectedDishes)
+            sum += (dish.Item1.Price * dish.Item2);
+
+        return sum;
+    }
+
+    private int sumOfPoints()
+    {
+        int sum = 0;
+        foreach(var dish in selectedDishes)
+            sum += (dish.Item1.Points.GetValueOrDefault() * dish.Item2);
+        return sum;
+    }
+
+    private async Task initOrderData()
+    {
+        orderData = new OrderFront()
+            {
+                FirstName = await sessionStorage.GetItemAsStringAsync("name"),
+                LastName = await sessionStorage.GetItemAsStringAsync("surname"),
+                PhoneNumber = await sessionStorage.GetItemAsStringAsync("phone"),
+                Address = await sessionStorage.GetItemAsStringAsync("address"),
+                City = "Gliwice",
+                RestaurantId = 1    // TODO kiedyś dać tutaj selecta
+            };
+    }
+
+    private async void makeOrder()
+    {
+        try
+        {
+            var hashedPassword = new passwordController().hashPassword(await sessionStorage.GetItemAsStringAsync("password"));
+            await sessionStorage.RemoveItemAsync("order_info");
+            var accountId = await sessionStorage.GetItemAsStringAsync("account_id");
+            var client = await clientService.GetClientByAccountId(Int32.Parse(accountId));
+            var account = await accountService.GetAccountByLoginAndPassword(await sessionStorage.GetItemAsStringAsync("email"), hashedPassword);
+            var tmp = await orderManagmentService.AddNewOrderAndDishes( orderData.Address, orderData.City, 
+                                                                        orderData.FirstName, orderData.LastName, 
+                                                                        orderData.PhoneNumber, orderData.RestaurantId, 
+                                                                        client.IdClient, selectedDishes);
+
+            clientService.UpdateClientPoints(account.IdAccount, sumOfPoints());
+            NavigationManager.NavigateTo("/client/statistics");
+        }
+        catch(Exception e)
+        {
+            wasException = true;
+            error = e.Message;
+            this.StateHasChanged();
+        }
+    }
+}
